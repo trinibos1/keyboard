@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Keyboard Config via Web Serial</title>
+</head>
+<body>
+
+<h1>Send Keyboard Config (JSON) via Web Serial</h1>
+
+<textarea id="jsonInput" rows="15" cols="60">
+{
+  "layers": {
+    "0": ["Q","W","E","A","S","D","Z","X","C"],
+    "1": ["ONE","TWO","THREE","FOUR","FIVE","SIX","SEVEN","EIGHT","NINE"]
+  }
+}
+</textarea>
+<br/>
+<button id="connectBtn">Connect to Keyboard</button>
+<button id="sendBtn" disabled>Send Config</button>
+
+<pre id="log"></pre>
+
+<script>
+let port;
+let writer;
+const log = document.getElementById('log');
+
+function logMessage(msg) {
+  log.textContent += msg + "\n";
+  log.scrollTop = log.scrollHeight;
+}
+
+document.getElementById('connectBtn').addEventListener('click', async () => {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    logMessage("Connected to serial port.");
+    const textEncoder = new TextEncoderStream();
+    const writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
+    writer = textEncoder.writable.getWriter();
+
+    // Read incoming data
+    const textDecoder = new TextDecoderStream();
+    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+    const reader = textDecoder.readable.getReader();
+
+    (async function readLoop() {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (value) {
+          logMessage("Keyboard: " + value);
+        }
+      }
+    })();
+
+    document.getElementById('sendBtn').disabled = false;
+  } catch (error) {
+    logMessage("Error: " + error);
+  }
+});
+
+document.getElementById('sendBtn').addEventListener('click', async () => {
+  const json = document.getElementById('jsonInput').value.trim();
+  if (!json) {
+    alert("Please enter JSON config");
+    return;
+  }
+  if (!writer) {
+    alert("Not connected");
+    return;
+  }
+  try {
+    await writer.write(json + "\n");  // Send JSON + newline
+    logMessage("Config sent!");
+  } catch (e) {
+    logMessage("Failed to send: " + e);
+  }
+});
+</script>
+
+</body>
+</html>
